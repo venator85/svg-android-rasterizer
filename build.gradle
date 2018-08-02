@@ -1,0 +1,73 @@
+import java.nio.charset.StandardCharsets
+
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.jetbrains.kotlin.jvm' version '1.2.51'
+    id 'com.github.johnrengelman.shadow' version '2.0.4'
+}
+
+group 'eu.alessiobianchi'
+version '0.0.1'
+
+repositories {
+    jcenter()
+}
+
+mainClassName = "eu.alessiobianchi.svgandroidrasterizer.Main"
+
+jar {
+    manifest {
+        attributes 'Implementation-Version': version
+    }
+}
+
+shadowJar {
+    archiveName = 'svg-android-rasterizer.jar'
+}
+
+run {
+    // to pass arguments to the run task:
+    //   gw run -Pargs="-t foo"
+    if (project.hasProperty('args')) {
+        //noinspection GroovyAssignabilityCheck
+        args project.args.split('\\s+')
+    }
+}
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    compile 'com.github.ajalt:clikt:1.4.0'
+    compile "org.json:json:20180130"
+}
+
+task dist(type: Copy) {
+    group = 'distribution'
+    from shadowJar.archivePath
+    into rootProject.projectDir
+}
+dist.dependsOn shadowJar
+
+task distExec {
+    group = 'distribution'
+    description "Creates an executable JAR that can be executed directly, without using 'java -jar' (*nix only)"
+    doLast {
+        File jar = shadowJar.archivePath
+        byte[] jarContent = jar.readBytes()
+        File out = new File(rootProject.projectDir, jar.name.replace(".jar", ""))
+        FileOutputStream fos = new FileOutputStream(out)
+        fos.write("#!/usr/bin/env java -jar\n".getBytes(StandardCharsets.UTF_8))
+        fos.write(jarContent)
+        fos.close()
+        out.executable = true
+    }
+}
+distExec.dependsOn shadowJar
+
+sourceCompatibility = 1.8
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
