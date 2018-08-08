@@ -37,6 +37,8 @@ The operation is used to determine the output PNG size in pixels. The following 
 
 - pad<w_dp>x<h_dp> (padding). The PNG will be padded (with transparent background) so that its final dimensions will be exactly the ones specified (in dp).
 
+- mipmap. The resulting PNG will be placed in a mipmap (instead of drawable) subdirectory.
+
 Requirements:
 
 - svgexport (https://github.com/shakiba/svgexport). On OS X, it can be installed via: npm install svgexport -g

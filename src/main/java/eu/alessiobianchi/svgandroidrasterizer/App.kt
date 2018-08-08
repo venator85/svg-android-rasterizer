@@ -54,6 +54,8 @@ class App : ClicktCommandLine() {
                 throw IllegalArgumentException("No ops specified for $svg")
             }
 
+            val mipmap = ops.contains("mipmap")
+
             // if the svg hash has not changed AND there are no missing pngs, skip the generation
             val cachedHash = cache[svg.name]
             val calculatedHash = svg.sha256()
@@ -68,7 +70,7 @@ class App : ClicktCommandLine() {
 
                 val skip = if (hashMatches) {
                     val missingPngs = targetDensities.mapNotNull { dens ->
-                        val pngPath = outFile(basename, dens)
+                        val pngPath = outFile(basename, dens, mipmap)
                         if (Files.exists(pngPath)) null else pngPath
                     }
                     missingPngs.isEmpty()
@@ -95,12 +97,12 @@ class App : ClicktCommandLine() {
 
                 } else if (op.startsWith("tw")) {
                     val givenSize = op.removePrefix("tw").toInt()
-                    outputs = processTwTh(basename, givenSize)
+                    outputs = processTwTh(basename, givenSize, mipmap)
                             .mapValues { "${it.value}:" }
 
                 } else if (op.startsWith("th")) {
                     val givenSize = op.removePrefix("th").toInt()
-                    outputs = processTwTh(basename, givenSize)
+                    outputs = processTwTh(basename, givenSize, mipmap)
                             .mapValues { ":${it.value}" }
                 }
             }
@@ -108,7 +110,7 @@ class App : ClicktCommandLine() {
             rasterizations.add(Rasterization(svg, outputs))
 
             padSize?.let {
-                padOps.putAll(processPadding(basename, it))
+                padOps.putAll(processPadding(basename, it, mipmap))
             }
         }
 
@@ -134,28 +136,31 @@ class App : ClicktCommandLine() {
         runPngOptimization(allPngs)
 
         println("updating cache...")
+        cleanCache(cache)
         writeCache(cache)
     }
 
-    private fun processTwTh(basename: String, givenSize: Int): Map<Path, Int> {
+    private fun processTwTh(basename: String, givenSize: Int, mipmap: Boolean): Map<Path, Int> {
         return targetDensities.map { dens ->
-            val png = outFile(basename, dens)
+            val png = outFile(basename, dens, mipmap)
             val pxSize = px(givenSize, densities[dens]!!)
             Pair(png, pxSize)
         }.toMap()
     }
 
-    private fun processPadding(basename: String, padding: Pair<Int, Int>): Map<Path, String> {
+    private fun processPadding(basename: String, padding: Pair<Int, Int>, mipmap: Boolean): Map<Path, String> {
         return targetDensities.map { dens ->
-            val png = outFile(basename, dens)
+            val png = outFile(basename, dens, mipmap)
             val padW = px(padding.first, densities[dens]!!)
             val padH = px(padding.second, densities[dens]!!)
             Pair(png, "${padW}x$padH")
         }.toMap()
     }
 
-    private fun outFile(basename: String, dens: String) =
-            outputPath.resolve("drawable-$dens").resolve("$basename.png")
+    private fun outFile(basename: String, dens: String, mipmap: Boolean): Path {
+        val dirName = if (mipmap) "mipmap" else "drawable"
+        return outputPath.resolve("$dirName-$dens").resolve("$basename.png")
+    }
 
     fun runSvgExport(svgexportOps: List<Map<String, Any>>) {
         Files.createDirectories(svgexportOpsPath)
@@ -205,6 +210,16 @@ class App : ClicktCommandLine() {
             json.entries.associate { it.key!! to it.value.toString() }.toMutableMap()
         } catch (e: IOException) {
             mutableMapOf()
+        }
+    }
+
+    fun cleanCache(cache: MutableMap<String, String>) {
+        val it = cache.iterator()
+        while (it.hasNext()) {
+            val filename = it.next().key
+            if (!Files.exists(inputPath.resolve(filename))) {
+                it.remove()
+            }
         }
     }
 
