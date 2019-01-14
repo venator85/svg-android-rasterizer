@@ -3,7 +3,7 @@ import java.nio.charset.StandardCharsets
 plugins {
     id 'java'
     id 'application'
-    id 'org.jetbrains.kotlin.jvm' version '1.2.51'
+    id 'org.jetbrains.kotlin.jvm' version '1.3.11'
     id 'com.github.johnrengelman.shadow' version '2.0.4'
 }
 
@@ -37,18 +37,19 @@ run {
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    compile 'com.github.ajalt:clikt:1.4.0'
+    compile 'com.github.ajalt:clikt:1.5.0'
     compile "org.json:json:20180130"
 }
 
 task dist(type: Copy) {
+    dependsOn shadowJar
     group = 'distribution'
     from shadowJar.archivePath
     into rootProject.projectDir
 }
-dist.dependsOn shadowJar
 
 task distExec {
+    dependsOn shadowJar
     group = 'distribution'
     description "Creates an executable JAR that can be executed directly, without using 'java -jar' (*nix only)"
     doLast {
@@ -62,7 +63,6 @@ task distExec {
         out.executable = true
     }
 }
-distExec.dependsOn shadowJar
 
 sourceCompatibility = 1.8
 compileKotlin {
