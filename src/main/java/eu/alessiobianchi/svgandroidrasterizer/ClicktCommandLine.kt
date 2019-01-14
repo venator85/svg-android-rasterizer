@@ -4,14 +4,10 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.defaultLazy
-import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.path
-import java.io.FileNotFoundException
 import java.nio.file.FileSystem
 import java.nio.file.FileSystems
-import java.nio.file.Files
 
 private fun description(): String {
     val version = App::class.java.getPackage().implementationVersion
@@ -51,21 +47,13 @@ Requirements:
 
 abstract class ClicktCommandLine : CliktCommand(help = description()) {
 
-    private val defaultInputPath = "app/src/main/svg-png/"
     private val defaultOutputPath = "app/src/main/generated-res/"
     private val defaultSvgexportOpsPath = "app/build/"
-    private val defaultCacheDirPath = "app/build/"
-    private val defaultDensities = arrayListOf("hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
+    private val defaultDensities = listOf("hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
 
-    val inputPath by option("-i", "--input", help = "Input directory containing the SVG files (default: $defaultInputPath)")
-            .path(fileSystem = fileSystem, fileOkay = false, exists = true)
-            .defaultLazy {
-                val path = fileSystem.getPath(defaultInputPath)
-                if (!Files.exists(path)) {
-                    throw FileNotFoundException("Input directory $path doesn't exist")
-                }
-                path
-            }
+    val inputPaths by argument(help = "Input SVG files. Directories will be recurred into.")
+            .path(fileSystem = fileSystem, exists = true, fileOkay = true, folderOkay = true)
+            .multiple()
 
     val outputPath by option("-o", "--output", help = "Output directory for the generated PNGs, usually an Android res / directory (default: $defaultOutputPath)")
             .path(fileSystem = fileSystem, fileOkay = false)
@@ -75,20 +63,14 @@ abstract class ClicktCommandLine : CliktCommand(help = description()) {
             .path(fileSystem = fileSystem, fileOkay = false)
             .default(fileSystem.getPath(defaultSvgexportOpsPath))
 
-    val cacheDir by option("-c", "--cache-dir", help = "Directory for the cache file (default: $defaultCacheDirPath)")
-            .path(fileSystem = fileSystem, fileOkay = false)
-            .default(fileSystem.getPath(defaultCacheDirPath))
-
     val overrideOps by option("--override-ops", help = "Override any operation declared in the svg filename (e.g. tw32~pad60x60)")
 
-    val force by option("-f", "--force", help = "Force regeneration of all images skipping the cache.")
-            .flag()
-
-    private val _targetDensities by argument("--densities", help = "The densities to generate raster images for (default: ${defaultDensities.joinToString(", ")})")
-            .multiple()
+    private val _targetDensities by option("--densities", help = "The densities to generate raster images for, separated by comma (example and default: ${defaultDensities.joinToString(",")})")
     val targetDensities: List<String>
-        get() = if (_targetDensities.isEmpty()) defaultDensities else _targetDensities
-
+        get() {
+            val densities = _targetDensities?.split(",") ?: defaultDensities
+            return if (densities.isNotEmpty()) densities else defaultDensities
+        }
 
     protected val fileSystem: FileSystem
         get() = FileSystems.getDefault()

@@ -8,7 +8,7 @@ plugins {
 }
 
 group 'eu.alessiobianchi'
-version '0.0.1'
+version '0.0.2'
 
 repositories {
     jcenter()
@@ -37,7 +37,7 @@ run {
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    compile 'com.github.ajalt:clikt:1.5.0'
+    compile 'com.github.ajalt:clikt:1.6.0'
     compile "org.json:json:20180130"
 }
 

@@ -1,11 +1,9 @@
 package eu.alessiobianchi.svgandroidrasterizer
 
 import org.json.JSONArray
-import org.json.JSONObject
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.streams.asSequence
+import kotlin.streams.toList
 
 
 val densities = mapOf(
@@ -20,7 +18,6 @@ val densities = mapOf(
 class App : ClicktCommandLine() {
 
     private val svgexportOpsFile = "svgexport_ops.json"
-    private val cacheFile = "generate_resource_cache.json"
 
     override fun run() {
         doResize()
@@ -32,8 +29,6 @@ class App : ClicktCommandLine() {
 
             Files.createDirectories(outputPath.resolve("drawable-$it"))
         }
-
-        val cache = readCache()
 
         val rasterizations = mutableListOf<Rasterization>()
         val padOps = mutableMapOf<Path, String>()
@@ -55,33 +50,6 @@ class App : ClicktCommandLine() {
             }
 
             val mipmap = ops.contains("mipmap")
-
-            // if the svg hash has not changed AND there are no missing pngs, skip the generation
-            val cachedHash = cache[svg.name]
-            val calculatedHash = svg.sha256()
-            cache[svg.name] = calculatedHash
-
-            if (!force) {
-                val hashMatches = if (cachedHash != null) {
-                    calculatedHash == cachedHash
-                } else {
-                    false
-                }
-
-                val skip = if (hashMatches) {
-                    val missingPngs = targetDensities.mapNotNull { dens ->
-                        val pngPath = outFile(basename, dens, mipmap)
-                        if (Files.exists(pngPath)) null else pngPath
-                    }
-                    missingPngs.isEmpty()
-                } else {
-                    false
-                }
-
-                if (skip) {
-                    return@forEach
-                }
-            }
 
             var outputs = emptyMap<Path, String>()
             var padSize: Pair<Int, Int>? = null
@@ -134,10 +102,6 @@ class App : ClicktCommandLine() {
         val allPngs = (pngByRasterization + pngByPadOps).distinct()
         println("optimizing ${allPngs.size} generated images...")
         runPngOptimization(allPngs)
-
-        println("updating cache...")
-        cleanCache(cache)
-        writeCache(cache)
     }
 
     private fun processTwTh(basename: String, givenSize: Int, mipmap: Boolean): Map<Path, Int> {
@@ -203,38 +167,17 @@ class App : ClicktCommandLine() {
         }
     }
 
-    fun readCache(): MutableMap<String, String> {
-        return try {
-            val text = cacheDir.resolve(cacheFile).readText()
-            val json = JSONObject(text).toMap()
-            json.entries.associate { it.key!! to it.value.toString() }.toMutableMap()
-        } catch (e: IOException) {
-            mutableMapOf()
-        }
-    }
-
-    fun cleanCache(cache: MutableMap<String, String>) {
-        val it = cache.iterator()
-        while (it.hasNext()) {
-            val filename = it.next().key
-            if (!Files.exists(inputPath.resolve(filename))) {
-                it.remove()
+    fun inputSvgs(): Iterable<Path> {
+        return inputPaths.flatMap {
+            if (Files.isDirectory(it)) {
+                Files.walk(it).toList()
+            } else {
+                listOf(it)
             }
-        }
+        }.filter {
+            it.name.endsWith(".svg", ignoreCase = true)
+        }.distinct()
     }
-
-    fun writeCache(cache: Map<String, String>) {
-        try {
-            val path = cacheDir.resolve(cacheFile)
-            val text = JSONObject(cache).toString(2)
-            Files.write(path, text.toByteArray())
-        } catch (e: IOException) {
-        }
-    }
-
-    fun inputSvgs(): Sequence<Path> = Files.walk(inputPath)
-            .asSequence()
-            .filter { it.name.endsWith(".svg", ignoreCase = true) }
 }
 
 private data class Rasterization(
