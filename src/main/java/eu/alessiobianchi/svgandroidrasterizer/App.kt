@@ -3,6 +3,7 @@ package eu.alessiobianchi.svgandroidrasterizer
 import org.json.JSONArray
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.*
 import kotlin.streams.toList
 
 
@@ -31,7 +32,7 @@ class App : ClicktCommandLine() {
         }
 
         val rasterizations = mutableListOf<Rasterization>()
-        val padOps = mutableMapOf<Path, String>()
+        val imagemagickOps = LinkedList<Pair<Path, ImagemagickOp>>()
 
         inputSvgs().forEach { svg ->
             var ops = svg.name
@@ -53,6 +54,8 @@ class App : ClicktCommandLine() {
 
             var outputs = emptyMap<Path, String>()
             var padSize: Pair<Int, Int>? = null
+            var bgColor: Background? = null
+            var round = false
 
             ops.forEach { op ->
                 if (op.startsWith("pad")) {
@@ -72,13 +75,45 @@ class App : ClicktCommandLine() {
                     val givenSize = op.removePrefix("th").toInt()
                     outputs = processTwTh(basename, givenSize, mipmap)
                             .mapValues { ":${it.value}" }
+
+                } else if (op.startsWith("bg_")) {
+                    val colorStr = op.removePrefix("bg_")
+                    val rrggbb: String
+                    val alpha: String
+                    when (colorStr.length) {
+                        8 -> {
+                            alpha = colorStr.substring(0, 2)
+                            rrggbb = colorStr.substring(2)
+                        }
+                        6 -> {
+                            alpha = ""
+                            rrggbb = colorStr
+                        }
+                        else -> throw IllegalArgumentException("Invalid background color $op")
+                    }
+                    bgColor = Background(rrggbb, alpha)
+
+                } else if (op == ("round")) {
+                    round = true
                 }
             }
 
             rasterizations.add(Rasterization(svg, outputs))
 
-            padSize?.let {
-                padOps.putAll(processPadding(basename, it, mipmap))
+            padSize?.let { (w, h) ->
+                imagemagickOps.addAll(prepareOp(basename, mipmap) { dens ->
+                    val padW = px(w, dens)
+                    val padH = px(h, dens)
+                    Padding(padW, padH)
+                })
+            }
+
+            bgColor?.let { bg ->
+                imagemagickOps.addAll(prepareOp(basename, mipmap) { bg })
+            }
+
+            if (round) {
+                imagemagickOps.addAll(prepareOp(basename, mipmap) { Round })
             }
         }
 
@@ -92,14 +127,14 @@ class App : ClicktCommandLine() {
         }
         runSvgExport(svgexportOps)
 
-        println("applying ${padOps.size} paddings...")
-        runPadOps(padOps)
+        println("applying ${imagemagickOps.size} Imagemagick operations...")
+        runImagemagickOps(imagemagickOps)
 
         val pngByRasterization = rasterizations
                 .flatMap { it.outputs.keys }
                 .map { it.abs() }
-        val pngByPadOps = padOps.keys.map { it.abs() }
-        val allPngs = (pngByRasterization + pngByPadOps).distinct()
+        val pngByImagemagickOps = imagemagickOps.toMap().keys.map { it.abs() }
+        val allPngs = (pngByRasterization + pngByImagemagickOps).distinct()
         println("optimizing ${allPngs.size} generated images...")
         runPngOptimization(allPngs)
     }
@@ -112,13 +147,12 @@ class App : ClicktCommandLine() {
         }.toMap()
     }
 
-    private fun processPadding(basename: String, padding: Pair<Int, Int>, mipmap: Boolean): Map<Path, String> {
+    private fun prepareOp(basename: String, mipmap: Boolean, factory: (density: Int) -> ImagemagickOp): List<Pair<Path, ImagemagickOp>> {
         return targetDensities.map { dens ->
             val png = outFile(basename, dens, mipmap)
-            val padW = px(padding.first, densities[dens]!!)
-            val padH = px(padding.second, densities[dens]!!)
-            Pair(png, "${padW}x$padH")
-        }.toMap()
+            val dpi = densities[dens]!!
+            Pair(png, factory(dpi))
+        }
     }
 
     private fun outFile(basename: String, dens: String, mipmap: Boolean): Path {
@@ -142,15 +176,22 @@ class App : ClicktCommandLine() {
         }
     }
 
-    fun runPadOps(padOps: Map<Path, String>) {
-        padOps.forEach { path, padOp ->
-            val retCode = ProcessBuilder(
-                    "convert", path.abs(), "-background", "none", "-gravity", "center", "-extent", padOp, path.abs())
-                    .inheritIO()
+    @Suppress("UNCHECKED_CAST")
+    fun runImagemagickOps(imagemagickOps: List<Pair<Path, ImagemagickOp>>) {
+        imagemagickOps.forEach { (path, op) ->
+            val cmd = mutableListOf("convert", path.abs())
+            cmd.addAll(op.toArgs())
+            cmd.add(path.abs())
+            val process = ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
                     .start()
-                    .waitFor()
+            val stdouterr = process.inputStream.readBytes()
+            val retCode = process.waitFor()
             if (retCode != 0) {
-                throw RuntimeException("convert failed with error code $retCode")
+                println(":: $cmd\n")
+                System.out.write(stdouterr)
+                println()
+                throw RuntimeException("Imagemagick op failed with error code $retCode")
             }
         }
     }

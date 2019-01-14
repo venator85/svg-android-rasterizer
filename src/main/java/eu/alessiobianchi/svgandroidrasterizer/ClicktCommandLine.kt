@@ -33,6 +33,10 @@ The operation is used to determine the output PNG size in pixels. The following 
 
 - pad<w_dp>x<h_dp> (padding). The PNG will be padded (with transparent background) so that its final dimensions will be exactly the ones specified (in dp).
 
+- bg_<aarrggbb|rrggbb> (apply background color). The given background color will be used as background.
+
+- round. The image will be cropped to round shape.
+
 - mipmap. The resulting PNG will be placed in a mipmap (instead of drawable) subdirectory.
 
 Requirements:
