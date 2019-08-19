@@ -47,7 +47,12 @@ class App : ClicktCommandLine() {
             }
 
             if (ops.isEmpty()) {
-                throw IllegalArgumentException("No ops specified for $svg")
+                if (skipFileWithoutOps) {
+                    System.err.println("skipping file without ops: $svg")
+                    return@forEach
+                } else {
+                    throw IllegalArgumentException("No ops specified for $svg")
+                }
             }
 
             val mipmap = ops.contains("mipmap")

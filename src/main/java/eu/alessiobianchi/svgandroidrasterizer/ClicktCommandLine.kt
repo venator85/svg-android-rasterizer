@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.path
 import java.nio.file.FileSystem
@@ -75,6 +76,8 @@ abstract class ClicktCommandLine : CliktCommand(help = description()) {
             val densities = _targetDensities?.split(",") ?: defaultDensities
             return if (densities.isNotEmpty()) densities else defaultDensities
         }
+
+    val skipFileWithoutOps by option("-z", "--skip", help = "Skip SVG files without ops in the name").flag()
 
     protected val fileSystem: FileSystem
         get() = FileSystems.getDefault()
