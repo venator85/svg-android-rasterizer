@@ -1,8 +1,12 @@
 package eu.alessiobianchi.svgandroidrasterizer
 
+import com.andreapivetta.kolor.red
+import com.android.ide.common.vectordrawable.Svg2Vector
 import org.json.JSONArray
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.TRUNCATE_EXISTING
 import java.util.*
 import kotlin.streams.toList
 
@@ -32,6 +36,7 @@ class App : ClicktCommandLine() {
         }
 
         val rasterizations = mutableListOf<Rasterization>()
+        val androidVectorDrawableConversions = mutableListOf<AndroidVectorDrawableConversion>()
         val imagemagickOps = LinkedList<Pair<Path, ImagemagickOp>>()
 
         inputSvgs().forEach { svg ->
@@ -46,79 +51,83 @@ class App : ClicktCommandLine() {
                 ops = split("~").toMutableList()
             }
 
+            var toAndroidVectorDrawable = false
             if (ops.isEmpty()) {
                 if (skipFileWithoutOps) {
                     System.err.println("skipping file without ops: $svg")
                     return@forEach
                 } else {
-                    throw IllegalArgumentException("No ops specified for $svg")
+                    toAndroidVectorDrawable = true
                 }
             }
 
-            val mipmap = ops.contains("mipmap")
+            if (!toAndroidVectorDrawable) {
+                var outputs = emptyMap<Path, String>()
+                val mipmap = ops.contains("mipmap")
+                var padSize: Pair<Int, Int>? = null
+                var bgColor: Background? = null
+                var round = false
 
-            var outputs = emptyMap<Path, String>()
-            var padSize: Pair<Int, Int>? = null
-            var bgColor: Background? = null
-            var round = false
-
-            ops.forEach { op ->
-                if (op.startsWith("pad")) {
-                    op.removePrefix("pad").split("x").apply {
-                        if (size != 2) {
-                            throw IllegalArgumentException("Invalid padding op $op")
+                ops.forEach { op ->
+                    if (op.startsWith("pad")) {
+                        op.removePrefix("pad").split("x").apply {
+                            require(size == 2) { "Invalid padding op $op" }
+                            padSize = Pair(get(0).toInt(), get(1).toInt())
                         }
-                        padSize = Pair(get(0).toInt(), get(1).toInt())
-                    }
 
-                } else if (op.startsWith("tw")) {
-                    val givenSize = op.removePrefix("tw").toInt()
-                    outputs = processTwTh(basename, givenSize, mipmap)
+                    } else if (op.startsWith("tw")) {
+                        val givenSize = op.removePrefix("tw").toInt()
+                        outputs = processTwTh(basename, givenSize, mipmap)
                             .mapValues { "${it.value}:" }
 
-                } else if (op.startsWith("th")) {
-                    val givenSize = op.removePrefix("th").toInt()
-                    outputs = processTwTh(basename, givenSize, mipmap)
+                    } else if (op.startsWith("th")) {
+                        val givenSize = op.removePrefix("th").toInt()
+                        outputs = processTwTh(basename, givenSize, mipmap)
                             .mapValues { ":${it.value}" }
 
-                } else if (op.startsWith("bg_")) {
-                    val colorStr = op.removePrefix("bg_")
-                    val rrggbb: String
-                    val alpha: String
-                    when (colorStr.length) {
-                        8 -> {
-                            alpha = colorStr.substring(0, 2)
-                            rrggbb = colorStr.substring(2)
+                    } else if (op.startsWith("bg_")) {
+                        val colorStr = op.removePrefix("bg_")
+                        val rrggbb: String
+                        val alpha: String
+                        when (colorStr.length) {
+                            8 -> {
+                                alpha = colorStr.substring(0, 2)
+                                rrggbb = colorStr.substring(2)
+                            }
+                            6 -> {
+                                alpha = ""
+                                rrggbb = colorStr
+                            }
+                            else -> throw IllegalArgumentException("Invalid background color $op")
                         }
-                        6 -> {
-                            alpha = ""
-                            rrggbb = colorStr
-                        }
-                        else -> throw IllegalArgumentException("Invalid background color $op")
+                        bgColor = Background(rrggbb, alpha)
+
+                    } else if (op == ("round")) {
+                        round = true
                     }
-                    bgColor = Background(rrggbb, alpha)
-
-                } else if (op == ("round")) {
-                    round = true
                 }
-            }
 
-            rasterizations.add(Rasterization(svg, outputs))
+                rasterizations.add(Rasterization(svg, outputs))
 
-            padSize?.let { (w, h) ->
-                imagemagickOps.addAll(prepareOp(basename, mipmap) { dens ->
-                    val padW = px(w, dens)
-                    val padH = px(h, dens)
-                    Padding(padW, padH)
-                })
-            }
+                padSize?.let { (w, h) ->
+                    imagemagickOps.addAll(prepareOp(basename, mipmap) { dens ->
+                        val padW = px(w, dens)
+                        val padH = px(h, dens)
+                        Padding(padW, padH)
+                    })
+                }
 
-            bgColor?.let { bg ->
-                imagemagickOps.addAll(prepareOp(basename, mipmap) { bg })
-            }
+                bgColor?.let { bg ->
+                    imagemagickOps.addAll(prepareOp(basename, mipmap) { bg })
+                }
 
-            if (round) {
-                imagemagickOps.addAll(prepareOp(basename, mipmap) { Round })
+                if (round) {
+                    imagemagickOps.addAll(prepareOp(basename, mipmap) { Round })
+                }
+
+            } else {
+                val outFile = outFileAndroidVectorDrawable(basename)
+                androidVectorDrawableConversions += AndroidVectorDrawableConversion(svg, outFile)
             }
         }
 
@@ -142,12 +151,15 @@ class App : ClicktCommandLine() {
         val allPngs = (pngByRasterization + pngByImagemagickOps).distinct()
         println("optimizing ${allPngs.size} generated images...")
         runPngOptimization(allPngs)
+
+        println("performing ${androidVectorDrawableConversions.size} Android vector drawable conversions...")
+        runAndroidVectorDrawableConversions(androidVectorDrawableConversions)
     }
 
     private fun processTwTh(basename: String, givenSize: Int, mipmap: Boolean): Map<Path, Int> {
         return targetDensities.map { dens ->
             val png = outFile(basename, dens, mipmap)
-            val pxSize = px(givenSize, densities[dens]!!)
+            val pxSize = px(givenSize, densities.getValue(dens))
             Pair(png, pxSize)
         }.toMap()
     }
@@ -155,7 +167,7 @@ class App : ClicktCommandLine() {
     private fun prepareOp(basename: String, mipmap: Boolean, factory: (density: Int) -> ImagemagickOp): List<Pair<Path, ImagemagickOp>> {
         return targetDensities.map { dens ->
             val png = outFile(basename, dens, mipmap)
-            val dpi = densities[dens]!!
+            val dpi = densities.getValue(dens)
             Pair(png, factory(dpi))
         }
     }
@@ -165,7 +177,15 @@ class App : ClicktCommandLine() {
         return outputPath.resolve("$dirName-$dens").resolve("$basename.png")
     }
 
+    private fun outFileAndroidVectorDrawable(basename: String): Path {
+        return outputPath.resolve("drawable").resolve("$basename.xml")
+    }
+
     fun runSvgExport(svgexportOps: List<Map<String, Any>>) {
+        if (svgexportOps.isEmpty()) {
+            return
+        }
+
         Files.createDirectories(svgexportOpsPath)
         val f = svgexportOpsPath.resolve(svgexportOpsFile)
         val json = JSONArray(svgexportOps).toString(2)
@@ -213,6 +233,19 @@ class App : ClicktCommandLine() {
         }
     }
 
+    private fun runAndroidVectorDrawableConversions(list: List<AndroidVectorDrawableConversion>) {
+        list.forEach {(source, dest) ->
+            Files.createDirectories(dest.parent)
+            val error = Files.newOutputStream(dest, CREATE, TRUNCATE_EXISTING).use {
+                Svg2Vector.parseSvgToXml(source.toFile(), it)
+            }
+            if (error != null && error.isNotEmpty()) {
+                Files.deleteIfExists(dest)
+                System.err.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n!! Error during Android vector drawable conversion: $error\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!".red())
+            }
+        }
+    }
+
     fun inputSvgs(): Iterable<Path> {
         return inputPaths.flatMap {
             if (Files.isDirectory(it)) {
@@ -232,9 +265,16 @@ private data class Rasterization(
 ) {
     override fun toString(): String {
         val s = StringBuilder().append("Rasterization: $svg:\n")
-        outputs.forEach { k, v ->
+        outputs.forEach { (k, v) ->
             s.append("  $k -> $v\n")
         }
         return s.toString()
     }
+}
+
+private data class AndroidVectorDrawableConversion(
+    val svg: Path,
+    val output: Path
+) {
+    override fun toString(): String = "AndroidVectorDrawableConversion: $svg -> $output"
 }

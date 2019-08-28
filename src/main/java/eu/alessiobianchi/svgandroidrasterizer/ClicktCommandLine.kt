@@ -18,7 +18,7 @@ SVG Android Rasterizer v$version
 
 Author: Alessio Bianchi <me@alessiobianchi.eu>
 
-Rasterizes SVG files to Android PNG resources using the operations specified in the SVG filename.
+Rasterizes SVG files to Android PNG resources using the operations specified in the SVG filename, or converts SVG files to Android vector drawables.
 
 Each SVG filename must match the following pattern:
 
@@ -39,6 +39,8 @@ The operation is used to determine the output PNG size in pixels. The following 
 - round. The image will be cropped to round shape.
 
 - mipmap. The resulting PNG will be placed in a mipmap (instead of drawable) subdirectory.
+
+By default, if no ops are provided for a SVG file, it will be converted to an Android vector drawable.
 
 Requirements:
 
@@ -77,7 +79,7 @@ abstract class ClicktCommandLine : CliktCommand(help = description()) {
             return if (densities.isNotEmpty()) densities else defaultDensities
         }
 
-    val skipFileWithoutOps by option("-z", "--skip", help = "Skip SVG files without ops in the name").flag()
+    val skipFileWithoutOps by option("-z", "--skip", help = "Skip SVG files without ops in the name, instead of converting them to Android vector drawables").flag()
 
     protected val fileSystem: FileSystem
         get() = FileSystems.getDefault()
