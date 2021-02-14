@@ -3,6 +3,7 @@ package eu.alessiobianchi.svgandroidrasterizer
 import com.andreapivetta.kolor.red
 import com.android.ide.common.vectordrawable.Svg2Vector
 import org.json.JSONArray
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.CREATE
@@ -25,10 +26,14 @@ class App : ClicktCommandLine() {
     private val svgexportOpsFile = "svgexport_ops.json"
 
     override fun run() {
-        doResize()
+        if (gui) {
+            Gui().run()
+        } else {
+            doResize()
+        }
     }
 
-    fun doResize() {
+    private fun doResize() {
         targetDensities.forEach {
             densities[it] ?: throw IllegalArgumentException("Unknown density $it")
 
@@ -181,7 +186,7 @@ class App : ClicktCommandLine() {
         return outputPath.resolve("drawable").resolve("$basename.xml")
     }
 
-    fun runSvgExport(svgexportOps: List<Map<String, Any>>) {
+    private fun runSvgExport(svgexportOps: List<Map<String, Any>>) {
         if (svgexportOps.isEmpty()) {
             return
         }
@@ -221,7 +226,7 @@ class App : ClicktCommandLine() {
         }
     }
 
-    fun runPngOptimization(allPngs: List<String>) {
+    private fun runPngOptimization(allPngs: List<String>) {
         allPngs.forEach {
             val retCode = ProcessBuilder("optipng", "-quiet", it)
                     .inheritIO()
@@ -235,10 +240,7 @@ class App : ClicktCommandLine() {
 
     private fun runAndroidVectorDrawableConversions(list: List<AndroidVectorDrawableConversion>) {
         list.forEach {(source, dest) ->
-            Files.createDirectories(dest.parent)
-            val error = Files.newOutputStream(dest, CREATE, TRUNCATE_EXISTING).use {
-                Svg2Vector.parseSvgToXml(source.toFile(), it)
-            }
+            val error = runAndroidVectorDrawableConversion(dest, source)
             if (error != null && error.isNotEmpty()) {
                 Files.deleteIfExists(dest)
                 System.err.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n!! Error during Android vector drawable conversion: $error\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!".red())
@@ -256,6 +258,16 @@ class App : ClicktCommandLine() {
         }.filter {
             it.name.endsWith(".svg", ignoreCase = true)
         }.distinct()
+    }
+}
+
+fun runAndroidVectorDrawableConversion(dest: Path, source: Path): String? {
+    try {
+        Files.createDirectories(dest.parent)
+    } catch (ignore: FileAlreadyExistsException) {
+    }
+    return Files.newOutputStream(dest, CREATE, TRUNCATE_EXISTING).use {
+        Svg2Vector.parseSvgToXml(source.toFile(), it)
     }
 }
 

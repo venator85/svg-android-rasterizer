@@ -59,16 +59,16 @@ abstract class ClicktCommandLine : CliktCommand(help = description()) {
     private val defaultDensities = listOf("hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
 
     val inputPaths by argument(help = "Input SVG files. Directories will be recurred into.")
-            .path(fileSystem = fileSystem, exists = true, fileOkay = true, folderOkay = true)
-            .multiple()
+        .path(mustExist = true, canBeFile = true, canBeDir = true, fileSystem = fileSystem)
+        .multiple()
 
     val outputPath by option("-o", "--output", help = "Output directory for the generated PNGs, usually an Android res / directory (default: $defaultOutputPath)")
-            .path(fileSystem = fileSystem, fileOkay = false)
-            .default(fileSystem.getPath(defaultOutputPath))
+        .path(canBeFile = false, fileSystem = fileSystem)
+        .default(fileSystem.getPath(defaultOutputPath))
 
     val svgexportOpsPath by option("-s", "--svgexport-ops-dir", help = "Directory for the svgexport input file (default: $defaultSvgexportOpsPath)")
-            .path(fileSystem = fileSystem, fileOkay = false)
-            .default(fileSystem.getPath(defaultSvgexportOpsPath))
+        .path(canBeFile = false, fileSystem = fileSystem)
+        .default(fileSystem.getPath(defaultSvgexportOpsPath))
 
     val overrideOps by option("--override-ops", help = "Override any operation declared in the svg filename (e.g. tw32~pad60x60)")
 
@@ -80,6 +80,8 @@ abstract class ClicktCommandLine : CliktCommand(help = description()) {
         }
 
     val skipFileWithoutOps by option("-z", "--skip", help = "Skip SVG files without ops in the name, instead of converting them to Android vector drawables").flag()
+
+    val gui by option("-g", "--gui", help = "Shows a GUI to perform direct SVG -> Android VectorDrawable conversion").flag()
 
     protected val fileSystem: FileSystem
         get() = FileSystems.getDefault()
